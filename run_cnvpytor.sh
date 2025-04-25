@@ -33,6 +33,8 @@ OUTPUT_VCF="output.vcf"
 USE_BAF=false
 MASK_SNP=""
 MASK_SNP_FLAG=""
+FASTA_FILE=""
+BED_FILE=""
 
 
 # ===== parser =====
@@ -70,10 +72,35 @@ if [[ -z "$BAM_FILE" ]]; then
 fi
 
 if [[ "$USE_BAF" == true ]] && [[ -z "$VCF_FILE" ]]; then
-    echo "▶ BAF needs -vcf SNP file, generating via bcftools (it may takes long time)..."
+    echo "▶ BAF needs -vcf SNP file, generating via bcftools (it may take a long time)..."
+
+    # 若沒有提供 reference fasta，就請使用者輸入
+    if [[ -z "$FASTA_FILE" ]]; then
+        echo -n " No reference FASTA provided. Please enter the path to the reference FASTA file: "
+        read FASTA_FILE
+
+        # 若使用者還是沒輸入，就退出
+        if [[ -z "$FASTA_FILE" ]]; then
+            echo "ERROR: You must provide a reference FASTA file to continue."
+            exit 1
+        fi
+    fi
+
+    # 詢問是否提供 BED 檔案
+    echo -n "Optional: Enter BED file to limit regions (leave blank to use whole genome): "
+    read BED_FILE
+
+    # 組裝 mpileup 指令
+    MPILEUP_CMD=(bcftools mpileup --threads "$THREAD" -f "$FASTA_FILE" -a AD,DP)
+
+    if [[ -n "$BED_FILE" ]]; then
+        MPILEUP_CMD+=(-R "$BED_FILE")
+    fi
+
+    MPILEUP_CMD+=(-Ou "$BAM_FILE")
 
     # 執行 SNP calling
-    bcftools mpileup --threads "$THREAD" -f hs37d5.fa -a AD,DP -Ou "$BAM_FILE" | \
+    "${MPILEUP_CMD[@]}" | \
       bcftools call --threads "$THREAD" -mv -Oz -o snp.vcf.gz
 
     # 更新 VCF_FILE 變數
